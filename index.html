@@ -48,6 +48,11 @@ a{color:#60a5fa}
   </div>
   <button class="load" id="loadBtn" onclick="load()">⟳ Load infrastructure in this view</button>
   <div id="layers"></div>
+  <label class="lyr" style="border-top:1px solid #1c2942;margin-top:6px;padding-top:8px">
+    <input type="checkbox" id="utilToggle">
+    <span class="dot" style="background:linear-gradient(45deg,#f43f5e,#3b82f6)"></span>Utility service areas
+    <span class="cnt" id="cnt-utils"></span>
+  </label>
   <div class="basemaps">
     <button id="bm-sat" class="on" onclick="setBase('sat')">Satellite</button>
     <button id="bm-streets" onclick="setBase('streets')">Streets</button>
@@ -100,6 +105,23 @@ lc.querySelectorAll('input').forEach(i=>i.onchange=e=>{
   if(e.target.checked) groups[k].addTo(map); else map.removeLayer(groups[k]);
 });
 
+let utilLayer=null;
+const UTIL_COLORS=['#f43f5e','#3b82f6','#22c55e','#eab308','#a855f7','#06b6d4','#f97316','#ec4899','#84cc16','#14b8a6','#f59e0b','#8b5cf6'];
+function utilColor(name){ let h=0; for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0; return UTIL_COLORS[h%UTIL_COLORS.length]; }
+async function loadUtilities(on){
+  if(!on){ if(utilLayer) map.removeLayer(utilLayer); return; }
+  if(utilLayer){ utilLayer.addTo(map); utilLayer.bringToBack(); return; }
+  document.getElementById('cnt-utils').textContent='…';
+  try{
+    const r=await fetch('utilities.geojson'); const gj=await r.json();
+    utilLayer=L.geoJSON(gj,{
+      style:f=>{const pwp=/Pasadena/i.test(f.properties.Utility); return {color:utilColor(f.properties.Utility),weight:pwp?3.5:1.2,fillOpacity:pwp?.4:.16,opacity:.9};},
+      onEachFeature:(f,l)=>{const p=f.properties; l.bindPopup(`<b>${p.Utility}</b><br>${p.Type||''}${p.Phone?'<br>'+p.Phone:''}${p.URL?'<br><a href="'+p.URL+'" target="_blank">website</a>':''}`);}
+    }).addTo(map);
+    utilLayer.bringToBack();
+    document.getElementById('cnt-utils').textContent=gj.features.length+' utilities';
+  }catch(e){ document.getElementById('cnt-utils').textContent='err'; }
+}
 function togglePanel(){
   const p=document.getElementById('panel'), r=document.getElementById('reopen');
   const hide=!p.classList.contains('collapsed');
@@ -166,6 +188,7 @@ function classify(t){
   if(t.power==='line'||t.power==='minor_line') return 'powerlines';
   return null;
 }
+document.getElementById('utilToggle').onchange=e=>loadUtilities(e.target.checked);
 // auto-load Pasadena on first open
 load();
 </script>
