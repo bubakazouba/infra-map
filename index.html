@@ -53,9 +53,9 @@ a{color:#60a5fa}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const CITIES={
-  pasadena:{c:[34.156,-118.131],z:14},
-  la:{c:[34.045,-118.245],z:14},
-  sd:{c:[32.715,-117.161],z:14},
+  pasadena:{c:[34.147,-118.135],z:13},
+  la:{c:[34.045,-118.245],z:13},
+  sd:{c:[32.715,-117.161],z:13},
 };
 // layer definitions: key -> {label, color, radius, kind: 'point'|'line'|'big', overpass}
 const LAYERS={
@@ -114,7 +114,7 @@ async function load(){
     parts.push(`${v.q}(${bbox});`);
   }
   if(!parts.length){ status(big?'Zoom in to load trees/streetlights, or enable a lighter layer.':'No layers enabled.'); btn.disabled=false; btn.textContent='⟳ Load infrastructure in this view'; return; }
-  const q=`[out:json][timeout:90];(${parts.join('')});out tags geom center 20000;`;
+  const q=`[out:json][timeout:90];(${parts.join('')});out geom center 30000;`;
   status('querying OpenStreetMap…');
   try{
     const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
