@@ -11,7 +11,10 @@
 html,body{margin:0;height:100%;font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
 #map{position:absolute;inset:0}
 .panel{position:absolute;top:10px;left:10px;z-index:1000;background:rgba(13,19,32,.94);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:248px;max-height:calc(100% - 20px);overflow:auto;backdrop-filter:blur(4px)}
-.panel h1{font-size:15px;margin:0 0 2px}
+.panel.collapsed{display:none}
+.panel h1{font-size:15px;margin:0 0 2px;padding-right:22px}
+#collapse{position:absolute;top:8px;right:9px;background:#1f2d4a;border:1px solid #36507e;color:var(--ink);border-radius:7px;width:24px;height:24px;font-size:15px;line-height:1;cursor:pointer;padding:0}
+#reopen{position:absolute;top:10px;left:10px;z-index:1000;display:none;background:rgba(13,19,32,.94);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:9px 13px;font-size:13px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px)}
 .panel .sub{font-size:11px;color:var(--mut);margin-bottom:9px;line-height:1.4}
 .cities{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
 .cities button{flex:1;min-width:62px;background:#1f2d4a;color:var(--ink);border:1px solid #36507e;border-radius:8px;padding:6px 4px;font-size:12px;cursor:pointer}
@@ -33,7 +36,9 @@ a{color:#60a5fa}
 </head>
 <body>
 <div id="map"></div>
-<div class="panel">
+<button id="reopen" onclick="togglePanel()">☰ Layers</button>
+<div class="panel" id="panel">
+  <button id="collapse" onclick="togglePanel()" title="collapse">✕</button>
   <h1>🗺️ Infrastructure Map</h1>
   <div class="sub">Real OpenStreetMap data on a Google satellite basemap. Pick an area → <b>Load</b> → toggle layers.</div>
   <div class="cities">
@@ -95,6 +100,12 @@ lc.querySelectorAll('input').forEach(i=>i.onchange=e=>{
   if(e.target.checked) groups[k].addTo(map); else map.removeLayer(groups[k]);
 });
 
+function togglePanel(){
+  const p=document.getElementById('panel'), r=document.getElementById('reopen');
+  const hide=!p.classList.contains('collapsed');
+  p.classList.toggle('collapsed',hide);
+  r.style.display=hide?'block':'none';
+}
 function go(name){ const c=CITIES[name]; map.setView(c.c,c.z); load(); }
 function status(t){ document.getElementById('status').textContent=t; }
 
