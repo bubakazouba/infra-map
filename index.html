@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infrastructure Map — real OSM data on Google basemap</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+:root{--bg:#0b1220;--card:#16213a;--ink:#e6edf6;--mut:#93a4bd;--line:#28395c;}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+#map{position:absolute;inset:0}
+.panel{position:absolute;top:10px;left:10px;z-index:1000;background:rgba(13,19,32,.94);border:1px solid var(--line);border-radius:12px;padding:11px 12px;width:248px;max-height:calc(100% - 20px);overflow:auto;backdrop-filter:blur(4px)}
+.panel h1{font-size:15px;margin:0 0 2px}
+.panel .sub{font-size:11px;color:var(--mut);margin-bottom:9px;line-height:1.4}
+.cities{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.cities button{flex:1;min-width:62px;background:#1f2d4a;color:var(--ink);border:1px solid #36507e;border-radius:8px;padding:6px 4px;font-size:12px;cursor:pointer}
+.cities button:hover{background:#28406b}
+.load{width:100%;background:#3b82f6;color:#06121f;border:none;border-radius:9px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:9px}
+.load:disabled{opacity:.55;cursor:default}
+.lyr{display:flex;align-items:center;gap:7px;padding:3px 0;font-size:12.5px;cursor:pointer;user-select:none}
+.lyr input{accent-color:#3b82f6}
+.dot{width:12px;height:12px;border-radius:50%;flex:0 0 12px;border:1px solid rgba(255,255,255,.35)}
+.cnt{margin-left:auto;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+.basemaps{display:flex;gap:6px;margin:9px 0 4px}
+.basemaps button{flex:1;background:#1f2d4a;color:var(--ink);border:1px solid #36507e;border-radius:8px;padding:5px;font-size:11px;cursor:pointer}
+.basemaps button.on{background:#34d399;border-color:#34d399;color:#06121f;font-weight:700}
+#status{font-size:11px;color:var(--mut);margin-top:8px;min-height:15px;line-height:1.4}
+.note{font-size:10.5px;color:#64748b;margin-top:9px;line-height:1.45}
+a{color:#60a5fa}
+.leaflet-popup-content{font-size:12.5px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="panel">
+  <h1>🗺️ Infrastructure Map</h1>
+  <div class="sub">Real OpenStreetMap data on a Google satellite basemap. Pick an area → <b>Load</b> → toggle layers.</div>
+  <div class="cities">
+    <button onclick="go('pasadena')">Pasadena</button>
+    <button onclick="go('la')">DTLA</button>
+    <button onclick="go('sd')">San Diego</button>
+  </div>
+  <button class="load" id="loadBtn" onclick="load()">⟳ Load infrastructure in this view</button>
+  <div id="layers"></div>
+  <div class="basemaps">
+    <button id="bm-sat" class="on" onclick="setBase('sat')">Satellite</button>
+    <button id="bm-streets" onclick="setBase('streets')">Streets</button>
+  </div>
+  <div id="status">Pick an area and hit Load.</div>
+  <div class="note">Source: OpenStreetMap via Overpass (ODbL). Coverage is crowd-sourced — dense in cities, patchy in some areas. Basemap tiles © Google.</div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const CITIES={
+  pasadena:{c:[34.156,-118.131],z:14},
+  la:{c:[34.045,-118.245],z:14},
+  sd:{c:[32.715,-117.161],z:14},
+};
+// layer definitions: key -> {label, color, radius, kind: 'point'|'line'|'big', overpass}
+const LAYERS={
+  streetlights:{label:'Streetlights',color:'#fde047',r:2.2,kind:'point',heavy:true,q:'node["highway"="street_lamp"]'},
+  trees:{label:'Trees',color:'#22c55e',r:2.2,kind:'point',heavy:true,q:'node["natural"="tree"]'},
+  hydrants:{label:'Fire hydrants',color:'#ef4444',r:3.2,kind:'point',q:'node["emergency"="fire_hydrant"]'},
+  transformers:{label:'Transformers',color:'#f97316',r:3.5,kind:'point',q:'node["power"="transformer"]'},
+  substations:{label:'Substations',color:'#fb923c',r:6,kind:'big',q:'nwr["power"="substation"]'},
+  powerplants:{label:'Power plants',color:'#a855f7',r:8,kind:'big',q:'nwr["power"="plant"]'},
+  powerlines:{label:'Power lines',color:'#38bdf8',r:0,kind:'line',q:'way["power"~"line|minor_line"]'},
+};
+const ENABLED=Object.fromEntries(Object.keys(LAYERS).map(k=>[k,true]));
+
+const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView(CITIES.pasadena.c,CITIES.pasadena.z);
+const renderer=L.canvas({padding:.5});
+const bases={
+  sat:L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3'],maxZoom:21,attribution:'© Google'}),
+  streets:L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',{subdomains:['mt0','mt1','mt2','mt3'],maxZoom:21,attribution:'© Google'}),
+};
+bases.sat.addTo(map);
+let curBase='sat';
+function setBase(b){ if(b===curBase)return; map.removeLayer(bases[curBase]); bases[b].addTo(map); bases[b].bringToBack(); curBase=b;
+  document.getElementById('bm-sat').classList.toggle('on',b==='sat');
+  document.getElementById('bm-streets').classList.toggle('on',b==='streets'); }
+
+const groups={}; // key -> LayerGroup
+Object.keys(LAYERS).forEach(k=>{groups[k]=L.layerGroup().addTo(map);});
+
+// build layer toggles UI
+const lc=document.getElementById('layers');
+lc.innerHTML=Object.entries(LAYERS).map(([k,v])=>
+  `<label class="lyr"><input type="checkbox" data-k="${k}" ${ENABLED[k]?'checked':''}>
+    <span class="dot" style="background:${v.color}"></span>${v.label}
+    <span class="cnt" id="cnt-${k}"></span></label>`).join('');
+lc.querySelectorAll('input').forEach(i=>i.onchange=e=>{
+  const k=e.target.dataset.k; ENABLED[k]=e.target.checked;
+  if(e.target.checked) groups[k].addTo(map); else map.removeLayer(groups[k]);
+});
+
+function go(name){ const c=CITIES[name]; map.setView(c.c,c.z); load(); }
+function status(t){ document.getElementById('status').textContent=t; }
+
+async function load(){
+  const b=map.getBounds();
+  const bbox=`${b.getSouth().toFixed(5)},${b.getWest().toFixed(5)},${b.getNorth().toFixed(5)},${b.getEast().toFixed(5)}`;
+  const area=(b.getNorth()-b.getSouth())*(b.getEast()-b.getWest());
+  const big = area>0.06; // too wide for the dense point layers
+  const btn=document.getElementById('loadBtn'); btn.disabled=true; btn.textContent='loading…';
+  Object.values(groups).forEach(g=>g.clearLayers());
+  Object.keys(LAYERS).forEach(k=>document.getElementById('cnt-'+k).textContent='');
+  // assemble combined query for enabled layers (skip heavy ones when zoomed too far out)
+  let parts=[], skipped=[];
+  for(const [k,v] of Object.entries(LAYERS)){
+    if(!ENABLED[k]) continue;
+    if(big && v.heavy){ skipped.push(v.label); continue; }
+    parts.push(`${v.q}(${bbox});`);
+  }
+  if(!parts.length){ status(big?'Zoom in to load trees/streetlights, or enable a lighter layer.':'No layers enabled.'); btn.disabled=false; btn.textContent='⟳ Load infrastructure in this view'; return; }
+  const q=`[out:json][timeout:90];(${parts.join('')});out tags geom center 20000;`;
+  status('querying OpenStreetMap…');
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+    if(!r.ok) throw new Error('Overpass '+r.status);
+    const d=await r.json();
+    const counts=Object.fromEntries(Object.keys(LAYERS).map(k=>[k,0]));
+    for(const el of d.elements){
+      const t=el.tags||{};
+      const key=classify(t); if(!key||!ENABLED[key]) continue;
+      const v=LAYERS[key];
+      if(v.kind==='line'){
+        if(el.geometry){ L.polyline(el.geometry.map(p=>[p.lat,p.lon]),{color:v.color,weight:2,opacity:.85,renderer}).addTo(groups[key]); counts[key]++; }
+      } else {
+        const ll = el.lat!=null?[el.lat,el.lon] : (el.center?[el.center.lat,el.center.lon]:null);
+        if(!ll) continue;
+        const m=L.circleMarker(ll,{radius:v.r,color:v.color,weight:v.kind==='big'?2:0,fillColor:v.color,fillOpacity:v.kind==='point'?.85:.7,renderer});
+        const name=t.name||t.operator||v.label;
+        if(v.kind==='big'||t.name) m.bindPopup(`<b>${name}</b><br>${key}${t['plant:source']?' · '+t['plant:source']:''}${t['generator:source']?' · '+t['generator:source']:''}`);
+        m.addTo(groups[key]); counts[key]++;
+      }
+    }
+    Object.keys(LAYERS).forEach(k=>{document.getElementById('cnt-'+k).textContent=counts[k]?counts[k].toLocaleString():(ENABLED[k]?(big&&LAYERS[k].heavy?'zoom in':'0'):'');});
+    const tot=Object.values(counts).reduce((a,c)=>a+c,0);
+    status(`loaded ${tot.toLocaleString()} features${skipped.length?' · '+skipped.join('/')+' hidden (zoom in)':''}`);
+  }catch(e){ status('failed: '+e.message+' — try zooming in or reload.'); }
+  btn.disabled=false; btn.textContent='⟳ Load infrastructure in this view';
+}
+function classify(t){
+  if(t.highway==='street_lamp') return 'streetlights';
+  if(t.natural==='tree') return 'trees';
+  if(t.emergency==='fire_hydrant') return 'hydrants';
+  if(t.power==='transformer') return 'transformers';
+  if(t.power==='substation') return 'substations';
+  if(t.power==='plant') return 'powerplants';
+  if(t.power==='line'||t.power==='minor_line') return 'powerlines';
+  return null;
+}
+// auto-load Pasadena on first open
+load();
+</script>
+</body>
+</html>
